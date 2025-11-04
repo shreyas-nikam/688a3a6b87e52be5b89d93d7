@@ -23,14 +23,16 @@ def calculate_model_risk_score(df, weights, factor_mappings):
             try:
                 factor_scores = df_output[factor].apply(lambda x: mapping[x])
             except KeyError as e:
-                raise KeyError(f"Unknown categorical value \'{e.args[0]}\' encountered for factor \'{factor}\'. "
+                raise KeyError(f"Unknown categorical value '{e.args[0]}' encountered for factor '{factor}'. "
                                f"Expected one of: {list(mapping.keys())}.") from e
         elif callable(mapping):
             factor_scores = df_output[factor].apply(mapping)
         else:
-            raise TypeError(f"Unsupported mapping type for factor \'{factor}\'. "
+            raise TypeError(f"Unsupported mapping type for factor '{factor}'. "
                             "Mapping must be a dictionary for categorical values or a callable for continuous values.")
 
+        # Ensure factor_scores is numeric to avoid TypeError with Categorical
+        factor_scores = pd.to_numeric(factor_scores, errors='coerce')
         df_output['model_risk_score'] += factor_scores * weight
 
     return df_output
@@ -57,14 +59,14 @@ def provide_materiality_guidance(df, score_thresholds):
         'Rigorous Management'
     ]
 
-    df_copy['management_guidance'] = np.select(conditions, choices)
+    df_copy['management_guidance'] = np.select(conditions, choices, default='')
     df_copy['management_guidance'] = df_copy['management_guidance'].astype(str)
 
     return df_copy
 
 def run_page2():
     st.markdown("## 6. Defining the Model Risk Score Calculation")
-    st.markdown("""
+    st.markdown(r"""
     To quantify model risk, we will implement a simplified weighted sum methodology. Each model characteristic (complexity, data quality, usage frequency, business impact) will be assigned a numerical score, and these scores will be combined using predefined weights to calculate a composite `model_risk_score`. This score reflects the overall risk profile of a model, aligning with the principle that "risk increases with complexity, uncertainty about inputs and assumptions, broader use, and larger potential impact" [1, Page 7].
 
     The formula for the Model Risk Score is:
@@ -143,14 +145,14 @@ def run_page2():
 
     if 'models_with_risk_scores_df' in st.session_state and not st.session_state.models_with_risk_scores_df.empty:
         st.subheader("Head of the DataFrame with model risk scores:")
-        st.dataframe(st.session_state.models_with_risk_scores_df.head())
+        st.dataframe(st.session_state.models_with_risk_scores_df.head(), width='stretch')
     else:
         st.info("No model risk scores calculated yet. Adjust weights in the sidebar and click 'Calculate Risk Scores'.")
 
     st.markdown("The `model_risk_score` has been successfully calculated for each synthetic model based on the defined weighted sum methodology. This score now provides a quantitative measure of the risk associated with each model, considering its inherent characteristics and operational context.")
 
     st.markdown("## 7. Assessing Materiality and Management Guidance")
-    st.markdown("""
+    st.markdown(r"""
     The concept of **materiality** is critical in model risk management, guiding the intensity of oversight required. As described in the document, "Materiality is crucial in model risk management. If models have less impact on a bank's financial condition, a less complex risk management approach may suffice. However, if models have a substantial business impact, the risk management framework should be more rigorous and extensive" [1, Page 8].
 
     Based on the calculated `model_risk_score`, we will classify models into different management guidance levels. These levels correspond to increasing rigor of risk management practices.
@@ -162,16 +164,16 @@ def run_page2():
     """)
     
     st.sidebar.subheader("Materiality Guidance Thresholds (Read-only)")
-    st.sidebar.markdown(f"- Standard Oversight: $\le$ {st.session_state.score_thresholds['Standard Oversight']}")
-    st.sidebar.markdown(f"- Enhanced Scrutiny: > {st.session_state.score_thresholds['Standard Oversight']} and $\le$ {st.session_state.score_thresholds['Enhanced Scrutiny']}")
-    st.sidebar.markdown(f"- Rigorous Management: > {st.session_state.score_thresholds['Enhanced Scrutiny']}")
+    st.sidebar.markdown(rf"- Standard Oversight: $\le$ {st.session_state.score_thresholds['Standard Oversight']}")
+    st.sidebar.markdown(rf"- Enhanced Scrutiny: > {st.session_state.score_thresholds['Standard Oversight']} and $\le$ {st.session_state.score_thresholds['Enhanced Scrutiny']}")
+    st.sidebar.markdown(rf"- Rigorous Management: > {st.session_state.score_thresholds['Enhanced Scrutiny']}")
 
     if 'models_with_risk_scores_df' in st.session_state and not st.session_state.models_with_risk_scores_df.empty:
         st.session_state.models_with_guidance_df = provide_materiality_guidance(st.session_state.models_with_risk_scores_df, st.session_state.score_thresholds)
         st.subheader("Head of the DataFrame with management guidance:")
-        st.dataframe(st.session_state.models_with_guidance_df.head())
+        st.dataframe(st.session_state.models_with_guidance_df.head(), width='stretch')
         st.subheader("Distribution of Management Guidance Levels:")
-        st.dataframe(st.session_state.models_with_guidance_df['management_guidance'].value_counts())
+        st.dataframe(st.session_state.models_with_guidance_df['management_guidance'].value_counts(), width='stretch')
     else:
         st.info("No management guidance generated yet. Calculate risk scores first.")
 

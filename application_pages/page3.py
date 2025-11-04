@@ -73,19 +73,17 @@ def plot_risk_heatmap_plotly(df, x_col, y_col, value_col):
         y_order = sorted(df[y_col].unique(), reverse=True) # Reverse for typical heatmap display where higher values are at the top
 
 
-    fig = px.heatmap(
-        aggregated_data,
-        x=x_col,
-        y=y_col,
-        z=value_col,
+    # Pivot the data for heatmap
+    heatmap_data = aggregated_data.pivot(index=y_col, columns=x_col, values=value_col)
+    fig = px.imshow(
+        heatmap_data,
         color_continuous_scale=px.colors.sequential.YlGnBu,
         title=f'Average {value_col.replace("_", " ").title()} by {y_col.replace("_", " ").title()} and {x_col.replace("_", " ").title()}',
         labels={
-            x_col: x_col.replace("_", " ").title(),
-            y_col: y_col.replace("_", " ").title(),
-            value_col: f'Average {value_col.replace("_", " ").title()}'
-        },
-        category_orders={x_col: x_order, y_col: y_order}
+            "x": x_col.replace("_", " ").title(),
+            "y": y_col.replace("_", " ").title(),
+            "color": f'Average {value_col.replace("_", " ").title()}'
+        }
     )
     fig.update_layout(xaxis_title=x_col.replace("_", " ").title(), yaxis_title=y_col.replace("_", " ").title())
     return fig
@@ -238,16 +236,13 @@ def run_page3():
     base_usage_frequency_input = st.sidebar.selectbox('Usage Frequency', ('Low', 'Medium', 'High'), key="base_usage_frequency")
     base_business_impact_category_input = st.sidebar.selectbox('Business Impact Category', ('Low', 'Medium', 'High', 'Critical'), key="base_business_impact_category")
 
-    st.session_state.base_complexity_level = base_complexity_level_input
-    st.session_state.base_data_quality_index = base_data_quality_index_input
-    st.session_state.base_usage_frequency = base_usage_frequency_input
-    st.session_state.base_business_impact_category = base_business_impact_category_input
-
+    # Do not set session_state for base_data_quality_index after widget instantiation
+    # Use widget return values directly
     base_model_params = {
-        'complexity_level': st.session_state.base_complexity_level,
-        'data_quality_index': st.session_state.base_data_quality_index,
-        'usage_frequency': st.session_state.base_usage_frequency,
-        'business_impact_category': st.session_state.base_business_impact_category
+        'complexity_level': base_complexity_level_input,
+        'data_quality_index': base_data_quality_index_input,
+        'usage_frequency': base_usage_frequency_input,
+        'business_impact_category': base_business_impact_category_input
     }
 
     param_to_vary = st.sidebar.selectbox('Parameter to Vary', ('complexity_level', 'data_quality_index'), key="param_to_vary")
