@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import random # Added for potential tool internal dependency resolution
+
 
 def plot_risk_by_category_plotly(df, category_col, score_col):
     """
@@ -39,6 +41,7 @@ def plot_risk_by_category_plotly(df, category_col, score_col):
     fig.update_layout(xaxis_title=category_col.replace("_", " ").title(), yaxis_title=f'Average {score_col.replace("_", " ").title()}')
     return fig
 
+
 def plot_risk_heatmap_plotly(df, x_col, y_col, value_col):
     """
     Generates a heatmap showing the average model risk score across two categorical dimensions using Plotly.
@@ -69,28 +72,24 @@ def plot_risk_heatmap_plotly(df, x_col, y_col, value_col):
     else:
         y_order = sorted(df[y_col].unique(), reverse=True) # Reverse for typical heatmap display where higher values are at the top
 
-    pivot_table = aggregated_data.pivot_table(index=y_col, columns=x_col, values=value_col)
-    
-    # Reindex to ensure consistent order
-    pivot_table = pivot_table.reindex(index=y_order, columns=x_order)
 
-    fig = go.Figure(data=go.Heatmap(
-            z=pivot_table.values,
-            x=pivot_table.columns.tolist(),
-            y=pivot_table.index.tolist(),
-            colorscale='YlGnBu',
-            colorbar=dict(title=value_col.replace("_", " ").title())
-        ))
-
-    fig.update_layout(
+    fig = px.heatmap(
+        aggregated_data,
+        x=x_col,
+        y=y_col,
+        z=value_col,
+        color_continuous_scale=px.colors.sequential.YlGnBu,
         title=f'Average {value_col.replace("_", " ").title()} by {y_col.replace("_", " ").title()} and {x_col.replace("_", " ").title()}',
-        xaxis_title=x_col.replace("_", " ").title(),
-        yaxis_title=y_col.replace("_", " ").title(),
-        xaxis_nticks=len(pivot_table.columns),
-        yaxis_nticks=len(pivot_table.index)
+        labels={
+            x_col: x_col.replace("_", " ").title(),
+            y_col: y_col.replace("_", " ").title(),
+            value_col: f'Average {value_col.replace("_", " ").title()}'
+        },
+        category_orders={x_col: x_order, y_col: y_order}
     )
-    fig.update_xaxes(side="top")
+    fig.update_layout(xaxis_title=x_col.replace("_", " ").title(), yaxis_title=y_col.replace("_", " ").title())
     return fig
+
 
 def plot_risk_relationship_plotly(df, x_col, y_col, hue_col=None):
     """
@@ -110,15 +109,6 @@ def plot_risk_relationship_plotly(df, x_col, y_col, hue_col=None):
     title = f'Relationship between {x_col.replace("_", " ").title()} and {y_col.replace("_", " ").title()}'
     if hue_col:
         title += f' by {hue_col.replace("_", " ").title()}'
-    
-    # Handle categorical `hue_col` for consistent coloring
-    color_discrete_map = None
-    if hue_col and pd.api.types.is_categorical_dtype(df[hue_col]):
-        # Create a consistent color map if hue_col is categorical
-        categories = df[hue_col].cat.categories.tolist()
-        colors = px.colors.qualitative.Plotly # or any other suitable palette
-        color_discrete_map = {category: colors[i % len(colors)] for i, category in enumerate(categories)}
-
 
     fig = px.scatter(
         df,
@@ -126,13 +116,18 @@ def plot_risk_relationship_plotly(df, x_col, y_col, hue_col=None):
         y=y_col,
         color=hue_col,
         title=title,
-        labels={x_col: x_col.replace("_", " ").title(), y_col: y_col.replace("_", " ").title()},
-        color_discrete_map=color_discrete_map,
-        hover_data=df.columns.tolist() # Show all column data on hover
+        labels={
+            x_col: x_col.replace("_", " ").title(),
+            y_col: y_col.replace("_", " ").title(),
+            hue_col: hue_col.replace("_", " ").title() if hue_col else ""
+        },
+        color_continuous_scale=px.colors.sequential.Viridis,
+        hover_data=[hue_col] if hue_col else None
     )
+    fig.update_layout(xaxis_title=x_col.replace("_", " ").title(), yaxis_title=y_col.replace("_", " ").title())
 
-    fig.update_traces(marker=dict(size=8, opacity=0.8))
     return fig
+
 
 def perform_sensitivity_analysis(base_model_params, param_to_vary, variation_values, weights, factor_mappings):
     """
@@ -166,9 +161,8 @@ def perform_sensitivity_analysis(base_model_params, param_to_vary, variation_val
                 try:
                     mapped_value = mapper[factor_value]
                 except KeyError as e:
-                    st.error(f"Error in sensitivity analysis: Unknown categorical value ' {factor_value}' encountered for factor '{factor}'. "
-                             f"Expected one of: {list(mapper.keys())}.")
-                    mapped_value = 0 # Assign a default or handle error gracefully
+                    raise KeyError(f"Unknown categorical value \'{e.args[0]}\' encountered for factor \'{factor}\' in sensitivity analysis. "
+                                   f"Expected one of: {list(mapper.keys())}.") from e
             elif callable(mapper):
                 mapped_value = mapper(factor_value)
             else:
@@ -181,6 +175,7 @@ def perform_sensitivity_analysis(base_model_params, param_to_vary, variation_val
 
     return pd.DataFrame(results_data)
 
+
 def run_page3():
     st.markdown("## 8. Visualizing Model Risk Distribution by Business Impact")
     st.markdown("""
@@ -188,7 +183,7 @@ def run_page3():
     """)
 
     if 'models_with_guidance_df' not in st.session_state or st.session_state.models_with_guidance_df.empty:
-        st.warning("Please go to 'Page 1' and 'Page 2' to generate data and calculate risk scores first.")
+        st.warning("Please go to \'Page 1: Data Generation & Validation\' and \'Page 2: Risk Score & Guidance\' to generate and calculate model risk data first.")
         return
 
     st.subheader("Average Model Risk Score by Business Impact Category")
@@ -227,8 +222,7 @@ def run_page3():
     """)
 
     st.sidebar.subheader("Sensitivity Analysis Controls")
-    st.sidebar.markdown("**Base Model Parameters:**")
-
+    
     # Initialize base model parameters in session state
     if "base_complexity_level" not in st.session_state:
         st.session_state.base_complexity_level = 'Medium'
@@ -239,116 +233,93 @@ def run_page3():
     if "base_business_impact_category" not in st.session_state:
         st.session_state.base_business_impact_category = 'High'
 
-    base_complexity_level = st.sidebar.selectbox(
-        "Complexity Level", ('Low', 'Medium', 'High'), key="base_comp_level",
-        index=('Low', 'Medium', 'High').index(st.session_state.base_complexity_level)
-    )
-    base_data_quality_index = st.sidebar.number_input(
-        "Data Quality Index (50-100)", 50, 100, st.session_state.base_data_quality_index, key="base_dq_index"
-    )
-    base_usage_frequency = st.sidebar.selectbox(
-        "Usage Frequency", ('Low', 'Medium', 'High'), key="base_usage_freq",
-        index=('Low', 'Medium', 'High').index(st.session_state.base_usage_frequency)
-    )
-    base_business_impact_category = st.sidebar.selectbox(
-        "Business Impact Category", ('Low', 'Medium', 'High', 'Critical'), key="base_bi_cat",
-        index=('Low', 'Medium', 'High', 'Critical').index(st.session_state.base_business_impact_category)
-    )
+    base_complexity_level_input = st.sidebar.selectbox('Complexity Level', ('Low', 'Medium', 'High'), key="base_complexity_level")
+    base_data_quality_index_input = st.sidebar.number_input('Data Quality Index (50-100)', 50, 100, st.session_state.base_data_quality_index, key="base_data_quality_index")
+    base_usage_frequency_input = st.sidebar.selectbox('Usage Frequency', ('Low', 'Medium', 'High'), key="base_usage_frequency")
+    base_business_impact_category_input = st.sidebar.selectbox('Business Impact Category', ('Low', 'Medium', 'High', 'Critical'), key="base_business_impact_category")
 
-    st.session_state.base_model_params = {
-        'complexity_level': base_complexity_level,
-        'data_quality_index': base_data_quality_index,
-        'usage_frequency': base_usage_frequency,
-        'business_impact_category': base_business_impact_category
+    st.session_state.base_complexity_level = base_complexity_level_input
+    st.session_state.base_data_quality_index = base_data_quality_index_input
+    st.session_state.base_usage_frequency = base_usage_frequency_input
+    st.session_state.base_business_impact_category = base_business_impact_category_input
+
+    base_model_params = {
+        'complexity_level': st.session_state.base_complexity_level,
+        'data_quality_index': st.session_state.base_data_quality_index,
+        'usage_frequency': st.session_state.base_usage_frequency,
+        'business_impact_category': st.session_state.base_business_impact_category
     }
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**Parameter to Vary:**")
-    param_to_vary_option = st.sidebar.selectbox(
-        "Select Parameter to Vary",
-        ('complexity_level', 'data_quality_index'),
-        key="param_to_vary_option"
-    )
-
+    param_to_vary = st.sidebar.selectbox('Parameter to Vary', ('complexity_level', 'data_quality_index'), key="param_to_vary")
     variation_values = []
-    if param_to_vary_option == 'complexity_level':
-        variation_values = st.sidebar.multiselect(
-            "Complexity Levels to Test",
-            ('Low', 'Medium', 'High'),
-            default=('Low', 'Medium', 'High'),
-            key="complexity_variation_values"
-        )
-    elif param_to_vary_option == 'data_quality_index':
-        min_dq, max_dq = st.sidebar.slider(
-            "Data Quality Index Range",
-            50, 100, (50, 100), 5,
-            key="dq_variation_range"
-        )
-        variation_values = list(range(min_dq, max_dq + 1, 5))
+
+    if param_to_vary == 'complexity_level':
+        complexity_options = ['Low', 'Medium', 'High']
+        selected_complexity_values = st.sidebar.multiselect('Select Complexity Levels to Vary', complexity_options, default=complexity_options, key="vary_complexity_values")
+        variation_values = selected_complexity_values
+    elif param_to_vary == 'data_quality_index':
+        min_dq = st.sidebar.slider('Min Data Quality Index', 50, 95, 50, step=5, key="min_dq")
+        max_dq = st.sidebar.slider('Max Data Quality Index', min_dq + 5, 100, 100, step=5, key="max_dq")
+        step_dq = st.sidebar.slider('Step Size for Data Quality', 1, 10, 5, key="step_dq")
+        variation_values = list(range(min_dq, max_dq + 1, step_dq))
+    
+    # Ensure weights are in session state from Page 2
+    current_weights_for_sensitivity = {
+        'complexity_level': st.session_state.get('wc_weight', 0.2),
+        'data_quality_index': st.session_state.get('wdq_weight', 0.2),
+        'usage_frequency': st.session_state.get('wuf_weight', 0.1),
+        'business_impact_category': st.session_state.get('wbi_weight', 0.5)
+    }
 
     if st.sidebar.button("Run Sensitivity Analysis", key="run_sensitivity_button"):
         if not variation_values:
-            st.error("Please select at least one value to vary for the chosen parameter.")
-        elif 'wc_weight' not in st.session_state or 'wdq_weight' not in st.session_state or \
-             'wuf_weight' not in st.session_state or 'wbi_weight' not in st.session_state:
-            st.error("Weights are not defined. Please go to 'Page 2' to define weights.")
+            st.warning("Please select at least one value to vary for sensitivity analysis.")
         else:
-            current_weights = {
-                'complexity_level': st.session_state.wc_weight,
-                'data_quality_index': st.session_state.wdq_weight,
-                'usage_frequency': st.session_state.wuf_weight,
-                'business_impact_category': st.session_state.wbi_weight
-            }
-            try:
-                st.session_state.sensitivity_df = perform_sensitivity_analysis(
-                    st.session_state.base_model_params,
-                    param_to_vary_option,
-                    variation_values,
-                    current_weights,
-                    st.session_state.factor_mappings
-                )
-            except (KeyError, ValueError, TypeError) as e:
-                st.error(f"Error during sensitivity analysis: {e}")
-                st.session_state.sensitivity_df = pd.DataFrame() # Clear dataframe on error
+            sensitivity_df = perform_sensitivity_analysis(
+                base_model_params,
+                param_to_vary,
+                variation_values,
+                current_weights_for_sensitivity,
+                st.session_state.factor_mappings
+            )
+            st.session_state.sensitivity_df = sensitivity_df
+            st.session_state.param_to_vary_display = param_to_vary
+
 
     if 'sensitivity_df' in st.session_state and not st.session_state.sensitivity_df.empty:
-        if param_to_vary_option == 'complexity_level':
-            st.subheader("Sensitivity Analysis: Complexity Level")
-            fig_comp_sens = px.line(
-                st.session_state.sensitivity_df,
-                x='complexity_level',
-                y='model_risk_score',
-                title='Sensitivity of Model Risk Score to Complexity Level',
-                markers=True
-            )
-            fig_comp_sens.update_layout(xaxis_title='Complexity Level', yaxis_title='Model Risk Score')
-            st.plotly_chart(fig_comp_sens, use_container_width=True)
-            st.markdown("The sensitivity analysis clearly shows that increasing a model's `complexity_level` (from Low to High) directly leads to a higher `model_risk_score`, assuming all other factors remain constant. This highlights that model complexity is a significant driver of risk, and managing complexity can be an effective strategy for reducing overall model risk.")
+        st.subheader(f"Sensitivity Analysis: {st.session_state.param_to_vary_display.replace("_", " ").title()}")
+        
+        # Plotting the sensitivity analysis results
+        fig_sens = px.line(
+            st.session_state.sensitivity_df,
+            x=st.session_state.param_to_vary_display,
+            y='model_risk_score',
+            title=f'Sensitivity of Model Risk Score to {st.session_state.param_to_vary_display.replace("_", " ").title()}',
+            labels={
+                st.session_state.param_to_vary_display: st.session_state.param_to_vary_display.replace("_", " ").title(),
+                'model_risk_score': 'Model Risk Score'
+            },
+            markers=True
+        )
+        fig_sens.update_layout(xaxis_title=st.session_state.param_to_vary_display.replace("_", " ").title(), yaxis_title='Model Risk Score')
+        st.plotly_chart(fig_sens, use_container_width=True)
 
-        elif param_to_vary_option == 'data_quality_index':
-            st.subheader("Sensitivity Analysis: Data Quality Index")
-            fig_dq_sens = px.line(
-                st.session_state.sensitivity_df,
-                x='data_quality_index',
-                y='model_risk_score',
-                title='Sensitivity of Model Risk Score to Data Quality Index',
-                markers=True
-            )
-            fig_dq_sens.update_layout(xaxis_title='Data Quality Index (Higher is Better)', yaxis_title='Model Risk Score')
-            st.plotly_chart(fig_dq_sens, use_container_width=True)
+        if st.session_state.param_to_vary_display == 'complexity_level':
+            st.markdown("The sensitivity analysis clearly shows that increasing a model\'s `complexity_level` (from Low to High) directly leads to a higher `model_risk_score`, assuming all other factors remain constant. This highlights that model complexity is a significant driver of risk, and managing complexity can be an effective strategy for reducing overall model risk.")
+        elif st.session_state.param_to_vary_display == 'data_quality_index':
             st.markdown("The sensitivity analysis demonstrates that improving `data_quality_index` (increasing the index value) leads to a reduction in the `model_risk_score`. Conversely, poorer data quality significantly elevates the risk. This underscores that investment in data quality initiatives is a direct and impactful way to mitigate model risk.")
     else:
-        st.info("No sensitivity analysis results to display yet. Adjust parameters in the sidebar and click 'Run Sensitivity Analysis'.")
+        st.info("Run sensitivity analysis from the sidebar to see the results.")
 
     st.markdown("## 13. Conclusion and Key Takeaways")
     st.markdown("""
     This hands-on lab has provided a practical simulation of model risk assessment, emphasizing the critical role of **materiality** in financial institutions. We started by generating synthetic model data and then quantified model risk based on key characteristics like complexity, data quality, usage frequency, and business impact.
 
     Key takeaways from this exercise include:
-    - **Multi-factorial Nature of Risk**: Model risk is a composite of various factors, and changes in any one of them can significantly alter a model's overall risk profile.
+    - **Multi-factorial Nature of Risk**: Model risk is a composite of various factors, and changes in any one of them can significantly alter a model\'s overall risk profile.
     - **Materiality Drives Management**: The concept of materiality, often driven by potential business impact, directly dictates the rigor and intensity of model risk management practices required, aligning with regulatory expectations.
     - **Data-Driven Insights**: Visualizations and sensitivity analyses provide powerful tools to understand the relationships between model attributes and their risk implications, allowing for targeted risk mitigation strategies.
     - **Actionable Guidance**: By calculating a model risk score and translating it into practical management guidance, we demonstrated a tangible framework for model risk governance, as outlined in the provided document [1].
 
-    This simulation reinforces the understanding that effective model risk management is dynamic, requiring continuous assessment and adaptation based on a model's evolving characteristics and its potential impact on the institution.
+    This simulation reinforces the understanding that effective model risk management is dynamic, requiring continuous assessment and adaptation based on a model\'s evolving characteristics and its potential impact on the institution.
     """)
